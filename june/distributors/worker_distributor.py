@@ -409,7 +409,6 @@ def load_workflow_df(
     wf_df = pd.read_csv(
         workflow_file,
         delimiter=",",
-        delim_whitespace=False,
         skiprows=1,
         usecols=[0, 1, 3, 4],
         names=["super_area", "work_super_area", "n_man", "n_woman"],
@@ -463,6 +462,10 @@ def load_sex_per_sector(
             logger.info("There exists no Education sector in this geography.")
 
     # convert counts to ratios
+    # Convert columns to float to avoid dtype incompatibility warnings
+    sector_by_sex_df[m_columns] = sector_by_sex_df[m_columns].astype(float)
+    sector_by_sex_df[f_columns] = sector_by_sex_df[f_columns].astype(float)
+    
     sector_by_sex_df.loc[:, m_columns] = sector_by_sex_df.loc[:, m_columns].div(
         sector_by_sex_df[m_columns].sum(axis=1), axis=0
     )

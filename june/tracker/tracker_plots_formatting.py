@@ -25,12 +25,7 @@ def fig_initialize(setsize=False):
     plt.rc("text", usetex=True)
     plt.rc(
         "text.latex",
-        preamble=[
-            r"\usepackage{amsmath}",
-            r"\usepackage{amsthm}",
-            r"\usepackage{amssymb}",
-            r"\usepackage{amsfonts}",
-        ],
+        preamble=r"\usepackage{amsmath}\usepackage{amsthm}\usepackage{amssymb}\usepackage{amsfonts}",
     )
     # mpl.rcParams["font.family"] = "serif"
     # mpl.rcParams["font.serif"] = "STIX"

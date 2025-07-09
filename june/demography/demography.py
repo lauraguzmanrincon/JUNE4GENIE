@@ -439,11 +439,11 @@ def load_comorbidity_data(m_comorbidity_path=None, f_comorbidity_path=None):
             f_norm_2 = np.sum(female_co[column]) - f_nc
 
             for idx in list(male_co.index)[:-1]:
-                male_co[column].loc[idx] = (
-                    male_co[column].loc[idx] / m_norm_2 * m_norm_1
+                male_co.loc[idx, column] = (
+                    male_co.loc[idx, column] / m_norm_2 * m_norm_1
                 )
-                female_co[column].loc[idx] = (
-                    female_co[column].loc[idx] / f_norm_2 * f_norm_1
+                female_co.loc[idx, column] = (
+                    female_co.loc[idx, column] / f_norm_2 * f_norm_1
                 )
 
         return [male_co, female_co]
