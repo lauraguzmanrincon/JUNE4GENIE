@@ -59,7 +59,7 @@ This should automatically install any requirements as well. You can then get the
 As an alternative to the above, you can use conda:
 
 
-    conda create -n june_env python=3.8 -y # need 3.8 for some deps
+    conda create -n june_env python=3.12 -y 
     conda activate june_env
 
     python --version
