@@ -8,8 +8,8 @@ activity_to_super_groups:
   commute: ['city_transports', 'inter_city_transports']
 
 time:
-  total_days: 5
-  initial_day: "2020-03-01 9:00" 
+  total_days: 180 #360 #1000
+  initial_day: "2010-05-30 9:00" # "2010-03-01 9:00"
   step_duration: 
       weekday:
           0: 1 
@@ -36,4 +36,4 @@ time:
           3: ['medical_facility', 'residence']
 
 checkpoint_save_dates:
-  2020-03-15
+  2019-03-15

@@ -328,7 +328,7 @@ def combine_summaries(record_path, remove_left_overs=False, save_dir=None):
         if len(df) == 0:
             continue
         aggregator = {
-            col: "mean" if "current" in col else "sum" for col in df.columns[2:]
+            col: np.mean if "current" in col else sum for col in df.columns[2:]
         }
         df = df.groupby(["region", "time_stamp"], as_index=False).agg(aggregator)
         dfs.append(df)
