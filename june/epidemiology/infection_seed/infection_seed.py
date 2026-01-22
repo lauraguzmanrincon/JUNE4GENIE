@@ -31,7 +31,7 @@ class InfectionSeed:
         self,
         world: "World",
         infection_selector: InfectionSelector,
-        daily_cases_per_capita_per_age_per_region: pd.DataFrame,
+        daily_cases_per_capita_per_age_per_super_area: pd.DataFrame,
         seed_past_infections: bool = True,
         seed_strength=1.0,
         account_secondary_infections=False,
@@ -56,16 +56,14 @@ class InfectionSeed:
         """
         self.world = world
         self.infection_selector = infection_selector
-        self.daily_cases_per_capita_per_age_per_region = self._parse_input_dataframe(
-            df=daily_cases_per_capita_per_age_per_region, seed_strength=seed_strength
-        )
+        self.daily_cases_per_capita_per_age_per_super_area=daily_cases_per_capita_per_age_per_super_area
         self.min_date = (
-            self.daily_cases_per_capita_per_age_per_region.index.get_level_values(
+            self.daily_cases_per_capita_per_age_per_super_area.index.get_level_values(
                 "date"
             ).min()
         )
         self.max_date = (
-            self.daily_cases_per_capita_per_age_per_region.index.get_level_values(
+            self.daily_cases_per_capita_per_age_per_super_area.index.get_level_values(
                 "date"
             ).max()
         )
@@ -77,85 +75,44 @@ class InfectionSeed:
         self.last_seeded_cases = defaultdict(int)
         self.current_seeded_cases = defaultdict(int)
 
-    def _parse_input_dataframe(self, df, seed_strength=1.0):
-        """
-        Parses ages by expanding the intervals.
-        """
-        multi_index = pd.MultiIndex.from_product(
-            [df.index.get_level_values("date").unique(), range(0, 100)],
-            names=["date", "age"],
-        )
-        ret = pd.DataFrame(index=multi_index, columns=df.columns, dtype=float)
-        for date in df.index.get_level_values("date"):
-            for region in df.loc[date].columns:
-                cases_per_age = parse_age_probabilities(
-                    df.loc[date, region].to_dict(), fill_value=0.0
-                )
-                ret.loc[date, region] = np.array(cases_per_age)
-        ret *= seed_strength
-        return ret
-
     @classmethod
-    def from_global_age_profile(
-        cls,
-        world: "World",
-        infection_selector: InfectionSelector,
-        daily_cases_per_region: pd.DataFrame,
-        seed_past_infections: bool,
-        seed_strength: float = 1.0,
-        age_profile: Optional[dict] = None,
-        account_secondary_infections=False,
+    def from_manual_setting(
+            cls,
+            world: "World",
+            infection_selector: InfectionSelector,
+            date_range,
+            super_areas_list,
+            cases_per_capita,
+            seed_past_infections=False,
+            seed_strength=1.0,
+            account_secondary_infections=False,
     ):
-        """
-        seed_strength:
-            float that controls the strength of the seed
-        age_profile:
-            dictionary with weight on age groups. Example:
-            age_profile = {'0-20': 0., '21-50':1, '51-100':0.}
-            would only infect people aged between 21 and 50
-        """
-        if age_profile is None:
-            age_profile = {"0-100": 1.0}
-        multi_index = pd.MultiIndex.from_product(
-            [daily_cases_per_region.index.values, age_profile.keys()],
-            names=["date", "age"],
+        '''
+            Infections at random days at 9am
+        '''
+
+        idx = np.arange(len(date_range))
+        date_range = pd.to_datetime(date_range)
+        temp_index = pd.MultiIndex.from_arrays([date_range, super_areas_list, idx], names=['date', 'super_area', 'idx'])
+        mix_index = pd.MultiIndex.from_product([list(temp_index), range(0, 100)], names=["date-super_area", "age"])
+        mi = pd.MultiIndex.from_tuples(
+            [(lvl0, lvl1, lvl2, lvl3) for (lvl0, lvl1, lvl2), lvl3 in mix_index],
+            names=["date", "super_area", "idx", "age"]
         )
-        df = pd.DataFrame(
-            index=multi_index, columns=daily_cases_per_region.columns, dtype=float
-        )
-        for region in daily_cases_per_region.columns:
-            for age_key, age_value in age_profile.items():
-                df.loc[(daily_cases_per_region.index, age_key), region] = (
-                    age_value * daily_cases_per_region[region].values
-                )
+        df = pd.DataFrame(index=mi, columns=["perc"])
+
+        # Stores cases per capita
+        #df[:] = cases_per_capita # Before
+        # Loads cases_per_capita from a vector from the idx index
+        df['perc'] = [cases_per_capita[n] for n in df.index.get_level_values('idx')] # NEW 24.07.2025
+        df.index = df.index.droplevel('idx')
+
+        # Multiplies by seed strength
+        df *= seed_strength
         return cls(
             world=world,
             infection_selector=infection_selector,
-            daily_cases_per_capita_per_age_per_region=df,
-            seed_past_infections=seed_past_infections,
-            seed_strength=seed_strength,
-            account_secondary_infections=account_secondary_infections,
-        )
-
-    @classmethod
-    def from_uniform_cases(
-        cls,
-        world: "World",
-        infection_selector: InfectionSelector,
-        cases_per_capita: float,
-        date: str,
-        seed_past_infections,
-        seed_strength=1.0,
-        account_secondary_infections=False,
-    ):
-        date = pd.to_datetime(date)
-        mi = pd.MultiIndex.from_product([[date], ["0-100"]], names=["date", "age"])
-        df = pd.DataFrame(index=mi, columns=["all"])
-        df[:] = cases_per_capita
-        return cls(
-            world=world,
-            infection_selector=infection_selector,
-            daily_cases_per_capita_per_age_per_region=df,
+            daily_cases_per_capita_per_age_per_super_area=df,
             seed_past_infections=seed_past_infections,
             seed_strength=seed_strength,
             account_secondary_infections=account_secondary_infections,
@@ -185,11 +142,18 @@ class InfectionSeed:
             n_people_by_age[person.age] += 1
             if person.immunity.get_susceptibility(infection_id) > 0:
                 susceptible_people_by_age[person.age].append(person)
+        count_infected = 0 # LAURA 01.08.2025
+        max_prob = 0 # LAURA 01.08.2025
+        max_prob_person = None # LAURA 01.08.2025
+        first_person = False # LAURA 01.08.2025
         for age, susceptible in susceptible_people_by_age.items():
             # Need to rescale to number of susceptible people in the simulation.
             rescaling = n_people_by_age[age] / len(susceptible_people_by_age[age])
             for person in susceptible:
-                prob = cases_per_capita_per_age.loc[age] * rescaling
+                if first_person is False: # (if) LAURA 01.08.2025
+                    max_prob_person = person # guarantees a person is always chosen
+                    first_person = True
+                prob = cases_per_capita_per_age.loc[age].item() * rescaling
                 if random() < prob:
                     self.infect_person(person=person, time=time, record=record)
                     self.current_seeded_cases[super_area.region.name] += 1
@@ -197,6 +161,17 @@ class InfectionSeed:
                         self.bring_infection_up_to_date(
                             person=person, time_from_infection=-time, record=record
                         )
+                    count_infected += 1 # LAURA 01.08.2025
+                if prob > max_prob: # (if) LAURA 01.08.2025
+                    max_prob = prob
+                    max_prob_person = person
+        if count_infected == 0: # (if) LAURA 01.08.2025
+            self.infect_person(person=max_prob_person, time=time, record=record)
+            self.current_seeded_cases[super_area.region.name] += 1
+            if time < 0:
+                self.bring_infection_up_to_date(
+                    person=max_prob_person, time_from_infection=-time, record=record
+                )
 
     def bring_infection_up_to_date(self, person, time_from_infection, record):
         # Update transmission probability
@@ -258,6 +233,39 @@ class InfectionSeed:
                     record=record,
                 )
 
+    def infect_super_areas_v2(
+        self,
+        cases_per_capita_per_age_per_super_area: pd.DataFrame,
+        time: float,
+        date: datetime.datetime,
+        record: Optional[Record] = None,
+    ):
+        """
+        Infect super areas with numer of cases given by data frame
+
+        Parameters
+        ----------
+        n_cases_per_super_area:
+            data frame containig the number of cases per super area
+        time:
+            Time where infections start (could be negative if they started before the simulation)
+        """
+        for region in self.world.regions:
+            # I am ignoring secondary cases...
+
+            # Infect super areas
+            for super_area in region.super_areas:
+                if super_area.name in cases_per_capita_per_age_per_super_area.index.get_level_values("super_area"):
+                    # TODO find chunk from DF  cases_per_capita_per_age from DF
+                    cases_per_capita_per_age = cases_per_capita_per_age_per_super_area.loc[super_area.name]
+
+                    self.infect_super_area(
+                        super_area=super_area,
+                        cases_per_capita_per_age=cases_per_capita_per_age,
+                        time=time,
+                        record=record,
+                    )
+
     def unleash_virus_per_day(
         self, date: datetime, time, record: Optional[Record] = None
     ):
@@ -281,19 +289,20 @@ class InfectionSeed:
         not_yet_seeded_date = (
             date_str not in self.dates_seeded
             and date_str
-            in self.daily_cases_per_capita_per_age_per_region.index.get_level_values(
+            in self.daily_cases_per_capita_per_age_per_super_area.index.get_level_values(
                 "date"
             )
         )
-        if is_seeding_date and not_yet_seeded_date:
+        is_seeding_datetime = date in self.daily_cases_per_capita_per_age_per_super_area.index.get_level_values("date")
+        if is_seeding_date and not_yet_seeded_date and is_seeding_datetime:
             seed_logger.info(
                 f"Seeding {self.infection_selector.infection_class.__name__} infections at date {date.date()}"
             )
-            cases_per_capita_per_age_per_region = (
-                self.daily_cases_per_capita_per_age_per_region.loc[date]
+            cases_per_capita_per_age_per_super_area = (
+                self.daily_cases_per_capita_per_age_per_super_area.loc[date]
             )
-            self.infect_super_areas(
-                cases_per_capita_per_age_per_region=cases_per_capita_per_age_per_region,
+            self.infect_super_areas_v2(
+                cases_per_capita_per_age_per_super_area=cases_per_capita_per_age_per_super_area,
                 time=time,
                 record=record,
                 date=date,
