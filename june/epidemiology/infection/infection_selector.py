@@ -50,6 +50,7 @@ class InfectionSelector:
     @classmethod
     def from_file(
         cls,
+        local_factor_rates_df, # Laura 18.08.2025
         infection_class: Infection = Covid19,
         transmission_config_path: str = default_transmission_config_path,
         trajectories_config_path: str = default_trajectories_config_path,
@@ -60,6 +61,8 @@ class InfectionSelector:
 
         Parameters
         ----------
+        local_factor_rates_df:
+            data frame load as sim_betas containing "MSOA" and "factor_rate" columns
         transmission_config_path:
             path to transmission config file
         trajectories_config_path:
@@ -67,7 +70,8 @@ class InfectionSelector:
         health_index_generator:
             health index generator
         """
-        health_index_generator = HealthIndexGenerator.from_file(rates_file=rates_file)
+        health_index_generator = HealthIndexGenerator.from_file(rates_file=rates_file,
+                                                                factor_rates_df=local_factor_rates_df)
         trajectory_maker = TrajectoryMakers.from_file(trajectories_config_path)
         return InfectionSelector(
             infection_class=infection_class,

@@ -34,6 +34,7 @@ class HealthIndexGenerator:
     def __init__(
         self,
         rates_df: pd.DataFrame,
+        factor_rates_df: pd.DataFrame,
         care_home_min_age: int = 50,
         max_age=99,
         m_exp_baseline=79.4,
@@ -57,7 +58,9 @@ class HealthIndexGenerator:
         self.care_home_min_age = care_home_min_age
         self.rates_df = rates_df
         self.age_bins = self.rates_df.index
-        self.probabilities = self._get_probabilities(max_age)
+        self.factor_per_location = factor_rates_df.set_index("MSOA")["factor_rate"].to_dict()
+        #self.probabilities = self._get_probabilities(max_age)
+        self.probabilities = self._get_probabilities_by_sa(max_age)
         self.max_mild_symptom_tag = {
             value: key for key, value in index_to_maximum_symptoms_tag.items()
         }["severe"]
@@ -75,6 +78,7 @@ class HealthIndexGenerator:
     @classmethod
     def from_file(
         cls,
+        factor_rates_df,
         rates_file: str = default_rates_file,
         care_home_min_age=50,
         m_exp_baseline=79.4,
@@ -87,6 +91,7 @@ class HealthIndexGenerator:
         ifrs = ifrs.rename(_parse_interval)
         return cls(
             rates_df=ifrs,
+            factor_rates_df=factor_rates_df,
             care_home_min_age=care_home_min_age,
             m_exp_baseline=m_exp_baseline,
             f_exp_baseline=f_exp_baseline,
@@ -136,7 +141,8 @@ class HealthIndexGenerator:
             physiological_age = self.physiological_age(int(person.age), person.sex)
         else:
             physiological_age = int(person.age)
-        probabilities = self.probabilities[population][person.sex][physiological_age]
+        #probabilities = self.probabilities[population][person.sex][physiological_age]
+        probabilities = self.probabilities[population][person.sex][person.super_area.name][physiological_age]
         if infection_id is not None:
             effective_multiplier = person.immunity.get_effective_multiplier(
                 infection_id
@@ -233,4 +239,98 @@ class HealthIndexGenerator:
                     self._set_probability_per_age_bin(
                         p=probabilities, age_bin=age_bin, sex=sex, population=population
                     )
+        return probabilities
+
+    def _set_probability_per_age_by_sa(self, p, age_bin, sex, population, super_area):
+        '''
+            Set probabilities taking into account factor per super_area
+            Includes corrections added to _set_probability_per_age_bin()
+        '''
+        factor_rate = self.factor_per_location[super_area]  # see analysis_20250806.R
+        delta_rate = 0.02 # see analysis_20250806.R
+
+        _sex = _sex_short_to_long[sex]
+        asymptomatic_rate = self.rates_df.loc[
+            age_bin, f"{population}_asymptomatic_{_sex}"
+        ]
+        mild_rate = self.rates_df.loc[age_bin, f"{population}_mild_{_sex}"]
+        hospital_rate = self.rates_df.loc[age_bin, f"{population}_hospital_{_sex}"]
+        icu_rate = self.rates_df.loc[age_bin, f"{population}_icu_{_sex}"]
+        home_dead_rate = self.rates_df.loc[age_bin, f"{population}_home_ifr_{_sex}"]
+        hospital_dead_rate = self.rates_df.loc[
+            age_bin, f"{population}_hospital_ifr_{_sex}"
+        ]
+        icu_dead_rate = self.rates_df.loc[age_bin, f"{population}_icu_ifr_{_sex}"]
+
+        hospital_rate = factor_rate * (hospital_rate + delta_rate)
+        icu_rate = factor_rate * (icu_rate + delta_rate)
+        home_dead_rate = factor_rate * (home_dead_rate + delta_rate)
+        hospital_dead_rate = factor_rate * (hospital_dead_rate + delta_rate)
+        icu_dead_rate = factor_rate * (icu_dead_rate + delta_rate)
+
+        severe_rate = max(
+            0, 1 - (hospital_rate + home_dead_rate + asymptomatic_rate + mild_rate)
+        )
+        # fill each age in bin
+        for age in range(age_bin.left, age_bin.right + 1):
+            p[population][sex][super_area][age][0] = asymptomatic_rate  # recovers as asymptomatic
+            p[population][sex][super_area][age][1] = mild_rate  # recovers as mild
+            p[population][sex][super_area][age][2] = severe_rate  # recovers as severe
+
+            hospital_recovery = hospital_rate - hospital_dead_rate
+            icu_recovery = icu_rate - icu_dead_rate
+            p[population][sex][super_area][age][3] = (
+                    hospital_recovery - icu_recovery
+            )  # recovers in the ward
+
+            p[population][sex][super_area][age][4] = max(
+                icu_rate - icu_dead_rate, 0
+            )  # recovers in the icu
+            p[population][sex][super_area][age][5] = max(home_dead_rate, 0)  # dies at home
+            p[population][sex][super_area][age][6] = max(
+                hospital_dead_rate - icu_dead_rate, 0
+            )  # dies in the ward
+            p[population][sex][super_area][age][7] = icu_dead_rate
+
+            # renormalise all but death rates (since those are the most certain ones)
+            to_keep_sum = p[population][sex][super_area][age][5:].sum()
+            to_adjust_sum = p[population][sex][super_area][age][:5].sum()
+            target_adjust_sum = max(1 - to_keep_sum, 0)
+            p[population][sex][super_area][age][:5] *= target_adjust_sum / to_adjust_sum
+
+            # Corrects normalisation ---
+            factor_adjust_deaths = 1 / max(1, to_keep_sum)
+            p[population][sex][super_area][age][5:] *= factor_adjust_deaths
+
+    def _get_probabilities_by_sa(self, max_age=99):
+        '''
+            Builds a bigger dictionary for probabilities, as rates depend on location too
+            Info about variations among MSOAs are in self.factor_per_location
+        '''
+        n_outcomes = 8
+        def make_super_areas_dict():
+            return {
+                key: np.zeros((max_age + 1, n_outcomes))
+                for key in self.factor_per_location.keys()
+            }
+
+        probabilities = {
+            "ch": {
+                "m": make_super_areas_dict(),
+                "f": make_super_areas_dict(),
+            },
+            "gp": {
+                "m": make_super_areas_dict(),
+                "f": make_super_areas_dict(),
+            },
+        }
+
+        for population in ("ch", "gp"):
+            for sex in ["m", "f"]:
+                for super_area in self.factor_per_location.keys():
+                    # values are constant at each bin
+                    for age_bin in self.age_bins:
+                        self._set_probability_per_age_by_sa(
+                            p=probabilities, age_bin=age_bin, sex=sex, population=population, super_area=super_area,
+                        )
         return probabilities
