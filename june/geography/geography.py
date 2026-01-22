@@ -179,6 +179,7 @@ class SuperArea:
         "areas",
         "companies",
         "closest_hospitals",
+        "local_susceptibility",
     )
     external = False
     _id = count()

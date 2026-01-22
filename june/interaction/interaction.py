@@ -188,6 +188,7 @@ class Interaction:
                 infector_tensor=infector_tensor,
                 susceptible_subgroup_id=susceptible_subgroup_id,
                 subgroup_susceptibles=subgroup_susceptibles,
+                local_susceptibility=group.super_area.local_susceptibility,
             )
             infected_ids += new_infected_ids
             infection_ids += new_infection_ids
@@ -208,7 +209,11 @@ class Interaction:
         return infected_ids, infection_ids, interactive_group.size
 
     def _time_step_for_subgroup(
-        self, infector_tensor, susceptible_subgroup_id, subgroup_susceptibles
+        self,
+        infector_tensor,
+        susceptible_subgroup_id,
+        subgroup_susceptibles,
+        local_susceptibility: float = 1
     ):
         """
         Time step for one susceptible subgroup. We first compute the combined
@@ -231,7 +236,7 @@ class Interaction:
                     susceptible_subgroup_id
                 ].sum()
                 infection_transmission_parameters.append(
-                    infector_transmission * susceptibility
+                    infector_transmission * susceptibility * local_susceptibility
                 )
             infection_id = self._gets_infected(
                 np.array(infection_transmission_parameters), infection_ids
