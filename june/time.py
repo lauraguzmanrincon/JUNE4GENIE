@@ -55,7 +55,7 @@ class Timer:
         self.delta_time = datetime.timedelta(hours=self.shift_duration)
 
     @classmethod
-    def from_file(cls, config_filename):
+    def from_file(cls, config_filename, override_initial_day: str = None):
         with open(config_filename) as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         time_config = config["time"]
@@ -64,8 +64,14 @@ class Timer:
         else:
             day_types = None
 
+        # Override initial day if not none
+        if override_initial_day is None:
+            initial_day = time_config["initial_day"]
+        else:
+            initial_day = override_initial_day
+
         return cls(
-            initial_day=time_config["initial_day"],
+            initial_day=initial_day,
             total_days=time_config["total_days"],
             weekday_step_duration=time_config["step_duration"]["weekday"],
             weekend_step_duration=time_config["step_duration"]["weekend"],

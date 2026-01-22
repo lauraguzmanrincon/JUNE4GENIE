@@ -135,6 +135,7 @@ class Simulator:
         checkpoint_save_path: str = None,
         record: Optional[Record] = None,
         waning_factor: float = 0.9,
+        override_initial_day: str = None,
     ) -> "Simulator":
 
         """
@@ -156,7 +157,10 @@ class Simulator:
         A Simulator
         """
         checkpoint_save_dates = _read_checkpoint_dates_from_file(config_filename)
-        timer = Timer.from_file(config_filename=config_filename)
+        timer = Timer.from_file(
+            config_filename=config_filename,
+            override_initial_day=override_initial_day
+        )
         activity_manager = cls.ActivityManager.from_file(
             config_filename=config_filename,
             world=world,
