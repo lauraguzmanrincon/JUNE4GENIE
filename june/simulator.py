@@ -81,6 +81,7 @@ class Simulator:
         record: Optional[Record] = None,
         checkpoint_save_dates: List[datetime.date] = None,
         checkpoint_save_path: str = None,
+        waning_factor: float = 0.9,
     ):
         """
         Class to run an epidemic spread simulation on the world.
@@ -117,6 +118,7 @@ class Simulator:
         self.record = record
         if self.record is not None and self.record.record_static_data:
             self.record.static_data(world=world)
+        self.waning_factor = waning_factor
 
     @classmethod
     def from_file(
@@ -132,6 +134,7 @@ class Simulator:
         config_filename: str = default_config_filename,
         checkpoint_save_path: str = None,
         record: Optional[Record] = None,
+        waning_factor: float = 0.9,
     ) -> "Simulator":
 
         """
@@ -174,6 +177,7 @@ class Simulator:
             record=record,
             checkpoint_save_dates=checkpoint_save_dates,
             checkpoint_save_path=checkpoint_save_path,
+            waning_factor=waning_factor,
         )
 
     @classmethod
@@ -340,6 +344,7 @@ class Simulator:
             infected_ids=infected_ids,
             infection_ids=infection_ids,
             people_from_abroad_dict=people_from_abroad_dict,
+            waning_factor=self.waning_factor,
         )
 
         tick, tickw = perf_counter(), wall_clock()

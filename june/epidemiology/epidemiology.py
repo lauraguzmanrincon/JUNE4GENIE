@@ -98,6 +98,7 @@ class Epidemiology:
         infected_ids: list = None,
         infection_ids: list = None,
         people_from_abroad_dict: dict = None,
+        waning_factor: float = 0,
     ):
         if self.vaccination_campaigns is not None and (
             self.current_date is None or timer.date.date() != self.current_date.date()
@@ -128,6 +129,7 @@ class Epidemiology:
             duration=timer.duration,
             record=record,
             vaccinate=vaccinate,
+            waning_factor=waning_factor,
         )
         if record:
             record.summarise_time_step(timestamp=timer.date, world=world)
@@ -185,6 +187,7 @@ class Epidemiology:
                 recovered_person_id=person.id,
                 infection_id=person.infection.infection_id(),
             )
+        person.immunity.susceptibility_dict[person.infection.infection_id()] = 0.0
         person.infection = None
 
     def update_health_status(
@@ -195,6 +198,7 @@ class Epidemiology:
         date=None,
         record: Record = None,
         vaccinate: bool = False,
+        waning_factor: float = 0,
     ):
         """
         Update symptoms and health status of infected people.
@@ -242,6 +246,11 @@ class Epidemiology:
                     person.vaccine_trajectory.update_vaccine_effect(
                         person=person, date=date, record=record
                     )
+            # Update susceptibility
+            if not person.infected and not person.dead:
+                for infection_id in person.immunity.susceptibility_dict:
+                    current_susceptibility = person.immunity.susceptibility_dict[infection_id]
+                    person.immunity.susceptibility_dict[infection_id] = 1 - waning_factor * (1 - current_susceptibility)
 
     def infect_people(
         self, world, time, infected_ids, infection_ids, people_from_abroad_dict
