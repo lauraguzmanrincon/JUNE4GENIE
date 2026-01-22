@@ -44,10 +44,14 @@ class Interaction:
         self.beta_reductions = {}
 
     @classmethod
-    def from_file(cls, config_filename: str = default_config_filename) -> "Interaction":
+    def from_file(cls,
+                  config_filename: str = default_config_filename,
+                  global_beta_factor: float = 1) -> "Interaction":
         with open(config_filename) as f:
             config = yaml.load(f, Loader=yaml.FullLoader)
         contact_matrices = config["contact_matrices"]
+        for key in config["betas"]:
+            config["betas"][key] *= global_beta_factor
         return Interaction(
             alpha_physical=config["alpha_physical"],
             betas=config["betas"],
