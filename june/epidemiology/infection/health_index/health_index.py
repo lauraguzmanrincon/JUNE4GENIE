@@ -188,9 +188,13 @@ class HealthIndexGenerator:
             p[population][sex][age][0] = asymptomatic_rate  # recovers as asymptomatic
             p[population][sex][age][1] = mild_rate  # recovers as mild
             p[population][sex][age][2] = severe_rate  # recovers as severe
+            # CORRECTION: corrects ward recovery calculation ---
+            hospital_recovery = hospital_rate - hospital_dead_rate
+            icu_recovery = icu_rate - icu_dead_rate
             p[population][sex][age][3] = (
-                hospital_rate - hospital_dead_rate
+                    hospital_recovery - icu_recovery
             )  # recovers in the ward
+
             p[population][sex][age][4] = max(
                 icu_rate - icu_dead_rate, 0
             )  # recovers in the icu
@@ -199,11 +203,16 @@ class HealthIndexGenerator:
                 hospital_dead_rate - icu_dead_rate, 0
             )  # dies in the ward
             p[population][sex][age][7] = icu_dead_rate
+
             # renormalise all but death rates (since those are the most certain ones)
             to_keep_sum = p[population][sex][age][5:].sum()
             to_adjust_sum = p[population][sex][age][:5].sum()
             target_adjust_sum = max(1 - to_keep_sum, 0)
             p[population][sex][age][:5] *= target_adjust_sum / to_adjust_sum
+
+            # CORRECTION: corrects normalisation
+            factor_adjust_deaths = 1 / max(1, to_keep_sum)
+            p[population][sex][age][5:] *= factor_adjust_deaths
 
     def _get_probabilities(self, max_age=99):
         n_outcomes = 8
